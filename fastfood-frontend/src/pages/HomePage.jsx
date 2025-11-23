@@ -4,7 +4,8 @@ import { Box } from '@mui/material';
 import HeroSection from './homeSections/HeroSection';
 import CategoriesSection from './homeSections/CategoriesSection';
 import SuggestionsSection from './homeSections/SuggestionsSection';
-// Bạn có thể tạo thêm các section khác (About Us, CTA, Footer) và import vào đây
+import ComboSection from './homeSections/ComboSection';
+
 
 function HomePage() {
     return (
@@ -14,6 +15,8 @@ function HomePage() {
 
             {/* Phần 2: Các danh mục sản phẩm */}
             <CategoriesSection />
+            {/* ComboSection*/}
+            <ComboSection />
 
             {/* Phần 3: Các sản phẩm được đề xuất */}
             <SuggestionsSection />

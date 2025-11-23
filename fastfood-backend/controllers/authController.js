@@ -3,13 +3,16 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// --- HÀM ĐĂNG KÝ ---
+// --- HÀM ĐĂNG KÝ (ĐÃ SỬA) ---
 const registerUser = async (req, res) => {
-    const { fullName, email, password } = req.body; // Lấy fullName
+    // 1. SỬA LẠI ĐỂ NHẬN SĐT
+    // Giả sử frontend gửi SĐT với tên là 'phoneNumber'
+    // Nếu tên khác (ví dụ: 'phone_number'), bạn phải sửa lại 'phoneNumber' ở dưới
+    const { fullName, email, password, phoneNumber } = req.body; 
 
-    // Kiểm tra dữ liệu đầu vào
-    if (!fullName || !email || !password) {
-        return res.status(400).json({ message: 'Vui lòng cung cấp đầy đủ thông tin: họ tên, email, mật khẩu.' });
+    // 2. SỬA LẠI KIỂM TRA
+    if (!fullName || !email || !password || !phoneNumber) {
+        return res.status(400).json({ message: 'Vui lòng cung cấp đầy đủ thông tin: họ tên, email, mật khẩu và SĐT.' });
     }
 
     try {
@@ -23,10 +26,12 @@ const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Tạo người dùng mới (sử dụng cột 'full_name' và 'password_hash')
-        const sql = 'INSERT INTO users (full_name, email, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, NOW(), NOW())'; // Sử dụng password_hash
+        // 3. SỬA LẠI CÂU LỆNH SQL (Thêm 'phone_number')
+        const sql = 'INSERT INTO users (full_name, email, password_hash, phone_number, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())';
         const defaultRole = 'user';
-        const [result] = await db.query(sql, [fullName, email, hashedPassword, defaultRole]);
+        
+        // 4. SỬA LẠI MẢNG THAM SỐ (Truyền 'phoneNumber' vào)
+        const [result] = await db.query(sql, [fullName, email, hashedPassword, phoneNumber, defaultRole]);
         const newUserId = result.insertId;
 
         // Tạo JWT
@@ -47,7 +52,7 @@ const registerUser = async (req, res) => {
     }
 };
 
-// --- HÀM ĐĂNG NHẬP (ĐÃ CẬP NHẬT) ---
+// --- HÀM ĐĂNG NHẬP (Giữ nguyên) ---
 const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
@@ -56,35 +61,30 @@ const loginUser = async (req, res) => {
     }
 
     try {
-        // Lấy user bao gồm cả cột password_hash
         const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (users.length === 0) {
             return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng' });
         }
         const user = users[0];
 
-        // Kiểm tra xem cột password_hash có giá trị không
-        if (!user.password_hash) { // <-- KIỂM TRA TÊN CỘT ĐÚNG
+        if (!user.password_hash) {
              console.error(`Lỗi: User ${email} không có password_hash trong database.`);
              return res.status(500).json({ message: 'Lỗi cấu hình tài khoản.' });
         }
 
-        // So sánh mật khẩu nhập vào với cột password_hash
-        const isMatch = await bcrypt.compare(password, user.password_hash); // <-- SỬ DỤNG TÊN CỘT ĐÚNG
+        const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
             return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng' });
         }
 
-        // Tạo token
         const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
-        // Trả về response
         res.json({
             message: 'Đăng nhập thành công',
             token,
             data: {
                 id: user.id,
-                full_name: user.full_name, // Dùng full_name
+                full_name: user.full_name,
                 email: user.email,
                 role: user.role
             }
@@ -96,11 +96,9 @@ const loginUser = async (req, res) => {
     }
 };
 
-// --- HÀM LẤY THÔNG TIN USER HIỆN TẠI (SAU KHI ĐÃ XÁC THỰC) ---
+// --- HÀM LẤY THÔNG TIN USER HIỆN TẠI (Giữ nguyên) ---
 const getUserProfile = async (req, res) => {
-    // req.user được cung cấp bởi middleware 'protect'
     if (req.user) {
-        // req.user chứa { id, full_name, email, role }
         res.status(200).json({
             message: 'Lấy thông tin người dùng thành công',
             data: req.user

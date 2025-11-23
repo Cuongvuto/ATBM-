@@ -135,20 +135,19 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     };
 
-    // Giá trị mà Context Provider sẽ cung cấp cho các component con
+   
     const value = {
-        user,       // Thông tin user (object hoặc null)
-        token,      // Token (string hoặc null)
-        isLoggedIn, // Trạng thái đăng nhập (boolean)
-        isAdmin,    // Trạng thái admin (boolean)
-        loading,    // Trạng thái đang tải thông tin user ban đầu (boolean)
-        login,      // Hàm đăng nhập
-        register,   // Hàm đăng ký
-        logout,     // Hàm đăng xuất
+        user,       
+        token,      
+        isLoggedIn, 
+        isAdmin,    
+        loading,    
+        login,      
+        register,  
+        logout,    
     };
 
-    // Chỉ render các component con (`children`) khi không còn trong trạng thái loading ban đầu
-    // Điều này đảm bảo các component con luôn có thông tin user chính xác (hoặc null) khi chúng render lần đầu
+    
     return (
         <AuthContext.Provider value={value}>
             {!loading && children}

@@ -1,217 +1,284 @@
 // src/pages/MenuPage.jsx
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom'; // Hook để đọc query params
+import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '../api/axiosConfig';
-import { Container, Typography, Grid, CircularProgress, Alert, Box, useTheme, Button } from '@mui/material';
+import {
+  Container, Typography, Grid, CircularProgress, Alert, Box,
+  useTheme, Button, Pagination, Autocomplete, TextField
+} from '@mui/material';
 import ProductCard from '../components/ProductCard';
 import SearchIcon from '@mui/icons-material/Search';
-import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu';
-import { useNavigate } from 'react-router-dom';
 
-// Hàm helper để parse query string
+// Helper để lấy query params từ URL
 function useQuery() {
-    return new URLSearchParams(useLocation().search);
+  return new URLSearchParams(useLocation().search);
 }
 
 function MenuPage() {
-    const theme = useTheme();
-    const navigate = useNavigate();
-    const [products, setProducts] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [title, setTitle] = useState('Thực Đơn Của Chúng Tôi');
-    const query = useQuery();
-    const searchTerm = query.get('search'); // Lấy giá trị của 'search' từ URL
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const query = useQuery();
 
-    useEffect(() => {
-        const fetchProducts = async () => {
-            setLoading(true);
-            setError(null);
-            let url = '/products';
-            // Nếu có searchTerm, thay đổi URL và tiêu đề
-            if (searchTerm) {
-                url = `/products?search=${searchTerm}`;
-                setTitle(`Kết quả tìm kiếm cho: "${searchTerm}"`);
-            } else {
-                setTitle('Thực Đơn Của Chúng Tôi');
-            }
+  // --- State cho Dữ liệu Sản phẩm ---
+  const searchTerm = query.get('search'); // Lấy từ URL
+  const currentPage = parseInt(query.get('page')) || 1;
+  const [products, setProducts] = useState([]);
+  const [pagination, setPagination] = useState({ totalPages: 1 });
+  const [loadingProducts, setLoadingProducts] = useState(true); // Loading danh sách món ăn
+  const [error, setError] = useState(null);
+  const [title, setTitle] = useState('Thực Đơn');
 
-            try {
-                const response = await apiClient.get(url);
-                setProducts(response.data.data);
-            } catch (err) {
-                setError('Không thể tải thực đơn.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchProducts();
-    }, [searchTerm]); // Chạy lại mỗi khi searchTerm thay đổi
+  // --- State cho Thanh Tìm Kiếm (Autocomplete) ---
+  const [searchInputValue, setSearchInputValue] = useState(searchTerm || ''); // Giá trị đang gõ
+  const [suggestOptions, setSuggestOptions] = useState([]); // Danh sách gợi ý
+  const [loadingSuggest, setLoadingSuggest] = useState(false); // Loading gợi ý
 
-    if (loading) return (
-        <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            my: 8, 
-            minHeight: 400, // Tăng height cho không gian rộng rãi
-            bgcolor: `linear-gradient(135deg, ${theme.palette.grey[50]} 0%, ${theme.palette.grey[100]} 100%)`, // Gradient nền tinh tế
-            borderRadius: 3,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)', // Shadow nhẹ
-        }}>
-            <CircularProgress color="primary" size={80} thickness={4} /> {/* Tăng size và thickness */}
-        </Box>
-    );
-    if (error) return (
-        <Container sx={{ my: 8 }}>
-            <Alert 
-                severity="error" 
-                sx={{ 
-                    textAlign: 'center', 
-                    borderRadius: 3, 
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)', // Shadow mạnh hơn
-                    py: 4, // Padding dọc
-                    fontSize: '1.1rem', // Font lớn hơn
+  const primaryColor = '#A62828';
+
+  // 1. Fetch danh sách sản phẩm chính (khi URL thay đổi)
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      setError(null);
+      let url = `/products?page=${currentPage}&limit=9`;
+      
+      if (searchTerm) {
+        url += `&search=${searchTerm}`;
+        setTitle(`Kết quả tìm kiếm: "${searchTerm}"`);
+        setSearchInputValue(searchTerm); // Đồng bộ ô input với URL
+      } else {
+        setTitle('Thực Đơn Thượng Hạng');
+      }
+
+      try {
+        const response = await apiClient.get(url);
+        setProducts(response.data.data);
+        setPagination(response.data.pagination);
+      } catch (err) {
+        setError('Không thể tải thực đơn.');
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+    fetchProducts();
+  }, [searchTerm, currentPage]);
+
+  // 2. Fetch gợi ý tìm kiếm (Debounce khi gõ)
+  useEffect(() => {
+    if (!searchInputValue.trim()) {
+        setSuggestOptions([]);
+        return;
+    }
+    
+    // Nếu giá trị gõ trùng với URL rồi thì không cần gợi ý lại (tránh loop)
+    if (searchInputValue === searchTerm) return;
+
+    setLoadingSuggest(true);
+    const delayDebounceFn = setTimeout(async () => {
+        try {
+            const response = await apiClient.get(`/products?search=${searchInputValue.trim()}&limit=5`); // Lấy 5 gợi ý
+            setSuggestOptions(response.data.data || []);
+        } catch (error) {
+            console.error("Lỗi gợi ý:", error);
+        } finally {
+            setLoadingSuggest(false);
+        }
+    }, 300); // Chờ 300ms sau khi ngừng gõ
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchInputValue]);
+
+
+  // Xử lý khi chọn trang mới
+  const handlePageChange = (event, value) => {
+    navigate(`/menu?page=${value}${searchTerm ? `&search=${searchTerm}` : ''}`);
+    window.scrollTo(0, 0);
+  };
+
+  // Xử lý khi người dùng Submit tìm kiếm (Chọn gợi ý hoặc Enter)
+  const handleSearchSubmit = (value) => {
+      if (value && value.trim()) {
+          navigate(`/menu?search=${value.trim()}`);
+      } else {
+          navigate('/menu'); // Nếu xóa trắng thì về menu gốc
+      }
+  };
+
+  return (
+    <Container maxWidth="lg" sx={{ my: 8 }}>
+      
+      {/* --- PHẦN HEADER & TÌM KIẾM --- */}
+      <Box sx={{ textAlign: 'center', mb: 8 }}>
+        <Typography 
+            variant="h2" 
+            component="h1" 
+            sx={{ 
+                fontFamily: '"Playfair Display", serif',
+                fontWeight: 700, 
+                color: '#2C2C2C',
+                mb: 1
+            }}
+        >
+            {title}
+        </Typography>
+        <Typography 
+            variant="body1" 
+            sx={{ 
+                fontFamily: '"Open Sans", sans-serif',
+                color: 'text.secondary',
+                mb: 4
+            }}
+        >
+            Khám phá hương vị tuyệt hảo từ những nguyên liệu tươi ngon nhất.
+        </Typography>
+
+        {/* Thanh Tìm Kiếm Autocomplete */}
+        <Box sx={{ maxWidth: 600, mx: 'auto' }}>
+            <Autocomplete
+                freeSolo
+                options={suggestOptions}
+                getOptionLabel={(option) => (typeof option === 'string' ? option : option.name)}
+                filterOptions={(x) => x} // Tắt bộ lọc client vì đã lọc server
+                loading={loadingSuggest}
+                
+                // Giá trị hiển thị trong ô
+                inputValue={searchInputValue}
+                onInputChange={(event, newInputValue) => {
+                    setSearchInputValue(newInputValue);
                 }}
-            >
-                {error}
-            </Alert>
-        </Container>
-    );
 
-    return (
-        <Container sx={{ 
-            my: { xs: 4, md: 8 }, 
-            animation: 'fadeIn 0.8s ease-in-out',
-            '@keyframes fadeIn': {
-                from: { opacity: 0, transform: 'translateY(30px)' }, // Tăng translateY cho hiệu ứng mạnh hơn
-                to: { opacity: 1, transform: 'translateY(0)' },
-            },
-            bgcolor: `linear-gradient(135deg, ${theme.palette.background.default} 0%, ${theme.palette.grey[50]} 100%)`, // Gradient nền tổng thể
-            borderRadius: 3,
-            boxShadow: '0 4px 24px rgba(0,0,0,0.08)', // Shadow tinh tế
-            p: { xs: 2, md: 4 }, // Padding nội bộ
-        }}>
-            {/* Tiêu đề với icon và gradient */}
-            <Box sx={{ textAlign: 'center', mb: 8 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
-                    {searchTerm ? (
-                        <SearchIcon sx={{ fontSize: 50, color: theme.palette.primary.main, mr: 2, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }} /> // Thêm shadow cho icon
-                    ) : (
-                        <RestaurantMenuIcon sx={{ fontSize: 50, color: theme.palette.primary.main, mr: 2, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }} />
-                    )}
-                    <Typography 
-                        variant="h3" 
-                        component="h1" 
-                        sx={{ 
-                            fontWeight: 800, // Bold hơn
-                            background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            textShadow: '2px 2px 4px rgba(0,0,0,0.15)', // Shadow mạnh hơn
-                            letterSpacing: 1.2, // Spacing chữ
+                // Khi người dùng chọn
+                onChange={(event, newValue) => {
+                    if (typeof newValue === 'string') {
+                        handleSearchSubmit(newValue);
+                    } else if (newValue && newValue.name) {
+                        handleSearchSubmit(newValue.name);
+                    }
+                }}
+
+                // Render ô nhập liệu
+                renderInput={(params) => (
+                    <TextField
+                        {...params}
+                        placeholder="Bạn muốn ăn gì hôm nay?"
+                        InputProps={{
+                            ...params.InputProps,
+                            startAdornment: (
+                                <SearchIcon sx={{ color: 'text.secondary', mr: 1, ml: 1 }} />
+                            ),
+                            endAdornment: (
+                                <React.Fragment>
+                                    {loadingSuggest ? <CircularProgress color="inherit" size={20} /> : null}
+                                    {params.InputProps.endAdornment}
+                                </React.Fragment>
+                            ),
                         }}
-                    >
-                        {title}
-                    </Typography>
-                </Box>
-                {searchTerm && (
-                    <Typography 
-                        variant="body1" 
-                        sx={{ 
-                            color: theme.palette.text.secondary, 
-                            fontSize: '1.1rem', 
-                            fontStyle: 'italic', // Italic cho mô tả
-                        }}
-                    >
-                        Khám phá các món ăn phù hợp với tìm kiếm của bạn!
-                    </Typography>
-                )}
-            </Box>
-            
-            {products.length > 0 ? (
-                <Grid container spacing={6}> {/* Tăng spacing để không gian rộng rãi hơn */}
-                    {products.map((product, index) => (
-                        <Grid 
-                            item 
-                            key={product.id} 
-                            xs={12} 
-                            sm={6} 
-                            md={4} // Thay đổi md từ 3 sang 4 để cân bằng hơn trên desktop
-                            sx={{
-                                animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`, // Stagger animation cho từng item
-                                '@keyframes fadeInUp': {
-                                    from: { opacity: 0, transform: 'translateY(20px)' },
-                                    to: { opacity: 1, transform: 'translateY(0)' },
-                                },
-                            }}
-                        >
-                            <Box sx={{ 
-                                transition: 'transform 0.3s ease, box-shadow 0.3s ease', // Transition cho hover
-                                '&:hover': { 
-                                    transform: 'translateY(-8px)', // Lift effect
-                                    boxShadow: '0 12px 40px rgba(0,0,0,0.15)', // Shadow mạnh hơn khi hover
-                                },
-                            }}>
-                                <ProductCard product={product} />
-                            </Box>
-                        </Grid>
-                    ))}
-                </Grid>
-            ) : (
-                <Box sx={{ 
-                    textAlign: 'center', 
-                    py: 10, // Padding dọc lớn hơn
-                    bgcolor: theme.palette.grey[100], // Background nhẹ
-                    borderRadius: 3,
-                    boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.05)', // Shadow nội bộ
-                }}>
-                    <SearchIcon sx={{ fontSize: 100, color: theme.palette.grey[400], mb: 3, filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.2))' }} /> {/* Icon lớn hơn với shadow */}
-                    <Typography 
-                        variant="h5" 
-                        sx={{ 
-                            mb: 3, 
-                            color: theme.palette.text.secondary, 
-                            fontWeight: 600,
-                        }}
-                    >
-                        Không tìm thấy sản phẩm nào phù hợp.
-                    </Typography>
-                    <Typography 
-                        variant="body1" 
-                        sx={{ 
-                            mb: 5, 
-                            color: theme.palette.text.secondary, 
-                            maxWidth: 500, 
-                            mx: 'auto', // Center text
-                        }}
-                    >
-                        Hãy thử tìm kiếm với từ khóa khác hoặc khám phá toàn bộ thực đơn!
-                    </Typography>
-                    <Button 
-                        variant="contained" 
-                        size="large" 
-                        onClick={() => navigate('/menu')}
                         sx={{
-                            background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                            color: 'white',
-                            px: 4, // Padding ngang
-                            py: 1.5, // Padding dọc
-                            borderRadius: 3,
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                            transition: 'all 0.3s ease',
-                            '&:hover': { 
-                                transform: 'scale(1.05)', // Scale nhẹ
-                                boxShadow: '0 8px 30px rgba(0,0,0,0.3)', // Shadow mạnh hơn
-                            },
+                            '& .MuiOutlinedInput-root': {
+                                borderRadius: '50px',
+                                bgcolor: 'white',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.08)', // Bóng nhẹ cho ô tìm kiếm
+                                '& fieldset': { borderColor: 'transparent' },
+                                '&:hover fieldset': { borderColor: 'rgba(0,0,0,0.1)' },
+                                '&.Mui-focused fieldset': { borderColor: primaryColor },
+                            }
                         }}
-                    >
-                        Xem toàn bộ thực đơn
-                    </Button>
-                </Box>
-            )}
+                    />
+                )}
+                // Render từng dòng gợi ý (Tùy chọn để đẹp hơn)
+                renderOption={(props, option) => (
+                    <li {...props} key={option.id}>
+                        <Grid container alignItems="center">
+                            <Grid item sx={{ display: 'flex', width: 44 }}>
+                                <img
+                                    src={option.image_url}
+                                    alt={option.name}
+                                    style={{ width: 35, height: 35, objectFit: 'cover', borderRadius: 4 }}
+                                />
+                            </Grid>
+                            <Grid item sx={{ width: 'calc(100% - 44px)', wordWrap: 'break-word' }}>
+                                <Box component="span" sx={{ fontWeight: 'bold', display: 'block' }}>
+                                    {option.name}
+                                </Box>
+                                <Typography variant="body2" color="text.secondary">
+                                    {parseInt(option.price).toLocaleString('vi-VN')}đ
+                                </Typography>
+                            </Grid>
+                        </Grid>
+                    </li>
+                )}
+            />
+        </Box>
+      </Box>
+
+      {/* --- DANH SÁCH SẢN PHẨM --- */}
+      {loadingProducts ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 8, minHeight: 400 }}>
+            <CircularProgress sx={{ color: primaryColor }} size={60} />
+        </Box>
+      ) : error ? (
+        <Container sx={{ my: 8 }}>
+            <Alert severity="error" sx={{ textAlign: 'center' }}>{error}</Alert>
         </Container>
-    );
+      ) : products.length > 0 ? (
+        <>
+          <Grid container spacing={6}>
+            {products.map((product) => (
+              <Grid item key={product.id} xs={12} sm={6} md={4}>
+                <ProductCard product={product} />
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
+                <Pagination
+                count={pagination.totalPages}
+                page={currentPage}
+                onChange={handlePageChange}
+                size="large"
+                sx={{
+                    '& .MuiPaginationItem-root': {
+                        fontFamily: '"Playfair Display", serif',
+                        fontSize: '1.1rem',
+                        '&.Mui-selected': {
+                            bgcolor: primaryColor,
+                            color: 'white',
+                            '&:hover': { bgcolor: '#801f1f' }
+                        }
+                    }
+                }}
+                />
+            </Box>
+          )}
+        </>
+      ) : (
+        <Box sx={{ textAlign: 'center', py: 10 }}>
+          <SearchIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
+          <Typography variant="h5" sx={{ fontFamily: '"Playfair Display", serif', mb: 3 }}>
+            Không tìm thấy món nào tên "{searchTerm}".
+          </Typography>
+          <Button
+            variant="outlined"
+            size="large"
+            onClick={() => {
+                setSearchInputValue(''); // Xóa ô tìm kiếm
+                handleSearchSubmit(''); // Về trang gốc
+            }}
+            sx={{
+              color: primaryColor,
+              borderColor: primaryColor,
+              fontFamily: '"Open Sans", sans-serif',
+              '&:hover': { borderColor: '#801f1f', bgcolor: 'rgba(166, 40, 40, 0.04)' }
+            }}
+          >
+            Xem tất cả thực đơn
+          </Button>
+        </Box>
+      )}
+    </Container>
+  );
 }
 
 export default MenuPage;
